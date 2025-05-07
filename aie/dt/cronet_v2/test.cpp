@@ -54,11 +54,14 @@ int main ()
         int K = 10; 
         conv kernel(K,kC,kR,kS);
         
-        conv* output = nullptr;
+        int OH = (input.get_conv_H() - kernel.get_conv_H()) + 1;
+        int OW = (input.get_conv_W() - kernel.get_conv_W()) + 1;
+        conv output(input.get_conv_N(),kernel.get_conv_N(),OH,OW);
         nn trunknet;
         //trunknet.print_conv_dim("Input:",input);
         //trunknet.print_conv_dim("Kernel:", kernel);
-        trunknet.convolution(input,kernel,bias,1,0,output);
+        trunknet.convolution(input,kernel,bias,1,0,&output);
+        trunknet.print_conv_dim("Conv Output:", output);
 
     #endif
 
