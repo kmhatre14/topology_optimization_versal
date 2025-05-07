@@ -143,6 +143,9 @@ void nn::gemm(mat A, mat B, mat* const C)
     }
 
     C->mat_alloc(A.mat_row(), B.mat_col());
+    mat sum(M_tile_size[0],N_tile_size[1]);
+    sum.set_matrix_val(0);
+    std::vector<std::vector<mat>> temp(M_tiles.size(), std::vector<mat>(N_tiles[0].size(), mat(M_tile_size[0],N_tile_size[1])));
 
     for(int i = 0; i<M_tiles.size(); i++)
     {
@@ -151,53 +154,76 @@ void nn::gemm(mat A, mat B, mat* const C)
             for(int k = 0; k<M_tiles[0].size(); k++)
             {
                 M.tensor2D2mat(M_tiles[i][k]);
-                N.tensor2D2mat(N_tiles[i][k]);
+                N.tensor2D2mat(N_tiles[k][j]);
                 M.mat_mul(N,&out);
-                
-                // Mering into one output matrix
-                for (int pos_i = 0; pos_i < M_tile_size[0] ; pos_i++)
+                sum.mat_add(out,&sum);
+            }
+            
+            int ret = temp[i][j].matcpy(sum);
+            sum.set_matrix_val(0);
+        }
+    }
+    
+    // Mering into one output matrix
+    int row =0;
+    int col =0;
+    for (int i = 0; i < M_tile_size[0] ; i++)
+    {
+        for(int j = 0; j < N_tile_size[1] ; j++)
+        {
+            for(int pos_i = 0; pos_i<M_tile_size[0]; pos_i++)
+            {
+                for (int pos_j = 0; pos_j < N_tile_size[1]; pos_j++)
                 {
-                    for(int pos_j = 0; pos_j < N_tile_size[1] ; pos_j++)
+                    if (row >= A.mat_row())
                     {
-                        int row = i*M_tiles.size()+ pos_i;
-                        int col = j*N_tiles[0].size() + pos_j;
-                        //std::cout << "No issue here" << std::endl;
-                        C->mat_at(row,col) = out.mat_at(pos_i,pos_j);
+                        row = A.mat_row();
+                    }
+                    else if (col >= B.mat_col())
+                    {
+                        col = B.mat_col();
+                    }
+                    else
+                    {
+                        row = i*B.mat_col();
+                        col = j*N_tile_size[1] + pos_j;
+                        C->mat_at(row,col) = temp[i][j].mat_at(pos_i, pos_j);
                     }
                 }
             }
         }
     }
+    C->print_2d_dim("C:");
 }
 
-void nn::gemm2conv(mat input, conv*const output, int N, int F, int OH, int OW)
+void nn::gemm2conv(mat input, conv*const output, int N, int K, int OH, int OW)
 {
     // Validate total elements
-    if (input.mat_row() != N * F * OH * OW)
+    if ((input.mat_col() != N * OH * OW) && (input.mat_row() != K)) 
     {
         std::cout<< "Dimession mismatch:" << std::endl;
         std::cout<< "input rows: " << input.mat_row() << std::endl;
-        std::cout<< "F x N x OH x OW: " << std::endl;
+        std::cout<< "input cols: " << input.mat_col() << std::endl;
+        std::cout<< "K: " << K << std::endl;
+        std::cout<< "N x OH x OW: " << (N * OH * OW) << std::endl;
         return;
     }
 
     // Calculate stride values for index computation
-    const int stride_F = N * OH * OW;
+    const int stride_K = N * OH * OW;
     const int stride_N = OH * OW;
     const int stride_OH = OW;
 
     // Single-pass construction with merged reshape+transpose
     for (int n = 0; n < N; ++n) {
-        for (int f = 0; f < F; ++f) {
+        for (int k = 0; k < K; ++k) {
             for (int h = 0; h < OH; ++h) {
                 for (int w = 0; w < OW; ++w) {
                     // Calculate original index in flat_data
-                    const int src_idx = f * stride_F    // Filter dimension
-                                      + n * stride_N    // Batch dimension
-                                      + h * stride_OH;   // Height dimension
-
+                    const int src_idx = n * stride_N    // Batch dimension
+                                      + h * stride_OH + w;   // Height dimension
                     // Direct assignment to final transposed position
-                    output->layer[n].img[f][h][w] = input.mat_at(src_idx,w);
+                    output->layer[n].img[k][h][w] = input.mat_at(k,src_idx);
                 }
             }
         }
@@ -211,17 +237,14 @@ void nn::convolution(conv input, conv kernel, conv bias, int stride, int padding
     mat kernel_flat;
     mat bias_flat;
     mat out;
-    int OH = (input.get_conv_H() + 2*padding - kernel.get_conv_H())/stride + 1;
-    int OW = (input.get_conv_W() + 2*padding - kernel.get_conv_W())/stride + 1;
-    conv conv_out(input.get_conv_N(),kernel.get_conv_C(),OH,OW);
+    int OH = (input.get_conv_H() - kernel.get_conv_H()) + 1;
+    int OW = (input.get_conv_W() - kernel.get_conv_W()) + 1;
 
     nn::conv2mat(kernel, &kernel_flat);
+    nn::conv2mat(bias, &bias_flat);
     nn::im2col(input, kernel, stride, padding, &mat_im2col);
     nn::gemm(kernel_flat, mat_im2col, &mmul);
-    mmul.mat_add(bias_flat, &out);
-    gemm2conv(out, &conv_out, input.get_conv_N(), kernel.get_conv_C(), OH,OW);
-
-    output = &conv_out;
+    gemm2conv(mmul, output, input.get_conv_N(), kernel.get_conv_N(), OH,OW);
 }
 
 void nn::convolution(conv input, conv kernel, conv bias, int stride, conv* const output)
@@ -256,7 +279,7 @@ void nn::sigmoid(conv conv_output, conv output)
 }
 /*
 // Adaptive max pooling for 3D input: [channels, height, width]
-// For NCHW format data:
+// Kor NCHW format data:
 // input_dims = [channels, height, width]
 // output_dims = [channels, new_height, new_width]
 void adaptive_max_pool(const vector<float>& input, vector<float>& output,
@@ -328,7 +351,7 @@ tensor_bf_4D nn::mattiled(mat A, int tile_r, int tile_c)
         }
     }
 
-    //print_4d_matrix(final_tiles, "Final tiles");
+    //print_4d_matrix(final_tiles, "Kinal tiles");
     return final_tiles;
 }
 
