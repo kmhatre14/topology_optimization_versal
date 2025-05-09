@@ -17,8 +17,8 @@ aie/dt/
 │   ├── nn.hpp               ← CRONet inference
 │   ├── test.cpp             ← Sample test runner
 ├── fea/
-│   ├── fea_linear_solver/   ← Vectorized FEA kernel (by us)
-│   ├── fea_updated_vedant/  ← Scalar (non-vectorized) baseline FEA kernel (by us)
+│   ├── fea_linear_solver/   ← Vectorized FEA kernel (by us) --> Run for Reviewing Performance of Vectorized Code
+│   ├── fea_updated_vedant/  ← Scalar (non-vectorized) baseline FEA kernel (by us) --> Run for Reviewing Performance of Non Vectorized Code
 │   │   ├── kernels/
 │   │   │   └── kernels.cc   ← Custom FEA kernel logic
 │   │   ├── aie_top_all.cc   ← AIE graph and stream integration
