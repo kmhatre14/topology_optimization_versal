@@ -4,9 +4,12 @@
 
 #include <vector>
 #include <cstdint>
+#include "kernels/aie_top.h"
 
 #define FUNC_OK 1
 #define FUNC_NOK 0
+
+#define AMD_VIRSAL
 
 #ifndef AMD_VIRSAL
 typedef float bfloat16;

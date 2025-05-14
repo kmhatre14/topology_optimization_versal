@@ -2,7 +2,7 @@
 #ifndef NN_HPP
 #define NN_HPP
 
-#include "data_types.hpp"
+//#include "data_types.hpp"
 #include "mat.hpp"
 
 #ifndef AMD_VIRSAL

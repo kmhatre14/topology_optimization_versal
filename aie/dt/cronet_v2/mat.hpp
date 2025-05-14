@@ -19,6 +19,7 @@ class mat
 {
 private:
     matrix data;
+
 public:
     // constructor
     mat();
